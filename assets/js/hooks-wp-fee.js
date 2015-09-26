@@ -15,8 +15,8 @@ var SocialPaper = SocialPaper || {};
 // TinyMCE content editor instance
 SocialPaper.editor = {};
 
-// comments association array
-SocialPaper.comments = new Array;
+// tracks the changes to content
+SocialPaper.tracker = new Array;
 
 /**
  * When the page is ready
@@ -24,12 +24,12 @@ SocialPaper.comments = new Array;
 jQuery(document).ready( function($) {
 
 	/**
-	 * Init Inline Comments array
+	 * Init tracker array
 	 */
-	function social_paper_init_comments() {
+	function social_paper_incom_tracker_init() {
 
 		// reset array
-		SocialPaper.comments = [];
+		SocialPaper.tracker = [];
 
 		// get current
 		$('.fee-content-original').find( '[data-incom]' ).each( function( i, element ) {
@@ -43,77 +43,26 @@ jQuery(document).ready( function($) {
 			};
 
 			// add to array
-			SocialPaper.comments.push( data );
+			SocialPaper.tracker.push( data );
 
 		});
 
-		console.log( 'Init SocialPaper.comments', SocialPaper.comments );
-
 	}
 
 	/**
-	 * Get an item from the Inline Comments array
+	 * Add an item to the tracker array
 	 */
-	function social_paper_get_comment_by_original( identifier ) {
+	function social_paper_incom_tracker_add( data ) {
+		SocialPaper.tracker.push( data );
+	}
 
-		// init as not found
-		var found = false;
+	/**
+	 * Update an item in the tracker array
+	 */
+	function social_paper_incom_tracker_update( data ) {
 
 		// iterate through items and find relevant one
-		SocialPaper.comments.forEach( function( item ) {
-			if ( item.original == identifier ) {
-				found = item;
-				return false;
-			}
-		});
-
-		if ( found ) {
-			return found;
-		} else {
-			return false;
-		}
-
-	}
-
-	/**
-	 * Get an item from the Inline Comments array
-	 */
-	function social_paper_get_comment_by_modified( identifier ) {
-
-		// init as not found
-		var found = false;
-
-		// iterate through items and find relevant one
-		SocialPaper.comments.forEach( function( item ) {
-			if ( item.modified == identifier ) {
-				found = item;
-				return false;
-			}
-		});
-
-		if ( found ) {
-			return found;
-		} else {
-			return false;
-		}
-
-	}
-
-	/**
-	 * Add an item to the Inline Comments array
-	 */
-	function social_paper_add_comment( data ) {
-		SocialPaper.comments.push( data );
-		//console.log( 'Add item to SocialPaper.comments', data );
-	}
-
-	/**
-	 * Update an item in the Inline Comments array
-	 */
-	function social_paper_update_comment( data ) {
-
-		// iterate through items and find relevant one
-		SocialPaper.comments.forEach( function( item ) {
+		SocialPaper.tracker.forEach( function( item ) {
 			if ( item.original == data.original ) {
 				item = data;
 				return false;
@@ -123,9 +72,64 @@ jQuery(document).ready( function($) {
 	}
 
 	/**
+	 * Get an item from the tracker array
+	 */
+	function social_paper_incom_tracker_get_by( identifier, property ) {
+
+		// init as not found
+		var found = false;
+
+		// find relevant one
+		SocialPaper.tracker.forEach( function( item ) {
+			if (
+				property == 'modified' && item.modified == identifier ||
+				property == 'original' && item.original == identifier
+			) {
+				found = item;
+				return false;
+			}
+		});
+
+		if ( found ) {
+			return found;
+		} else {
+			return false;
+		}
+
+	}
+
+	/**
+	 * Update Inline Comments 'data-incom-comment' attributes for comments
+	 */
+	function social_paper_incom_comments_update() {
+
+		// with each of the tracked items
+		SocialPaper.tracker.forEach( function( item ) {
+
+			// if this item is modified and pre-existing
+			if ( item.is_modified && ! item.is_new ) {
+
+				// update the comments that reference it
+				$('li[data-incom-comment="' + item.original + '"]' ).each( function( i, el ) {
+					if ( ! $(el).hasClass( 'sp_processed' ) ) {
+						$(el).attr( 'data-incom-comment', item.modified );
+						$(el).addClass( 'sp_processed' );
+					}
+				});
+
+			}
+
+		});
+
+		// remove processed identifier
+		$('li.sp_processed').removeClass( 'sp_processed' );
+
+	}
+
+	/**
 	 * Remove Inline Comments 'data-incom' attributes from TinyMCE content
 	 */
-	function social_paper_clear_incom_attributes() {
+	function social_paper_incom_tinymce_clean() {
 
 		var items;
 
@@ -145,7 +149,7 @@ jQuery(document).ready( function($) {
 	/**
 	 * Add Inline Comments 'data-incom' attributes to TinyMCE content
 	 */
-	function social_paper_copy_incom_content() {
+	function social_paper_incom_tinymce_build() {
 
 		// overwrite current content
 		SocialPaper.editor.setContent( $('.fee-content-original').html(), {format : 'html'} );
@@ -177,6 +181,9 @@ jQuery(document).ready( function($) {
 
 			// return?
 			if ( event.keyCode == tinymce.util.VK.ENTER ) {
+
+				// so far this only assumes single keypresses with a collapsed
+				// selection (i.e. no selection is being overwritten)
 
 				// get new node
 				node = SocialPaper.editor.selection.getNode();
@@ -213,13 +220,13 @@ jQuery(document).ready( function($) {
 					// increment data
 					element.attr( 'data-incom', becomes );
 
-					// update data
-					comment_data = social_paper_get_comment_by_modified( current_identifier );
+					// get data and update
+					comment_data = social_paper_incom_tracker_get_by( current_identifier, 'modified' );
 					comment_data.modified = becomes;
 					comment_data.is_modified = true;
 
 					// update tracker array
-					social_paper_update_comment( comment_data );
+					social_paper_incom_tracker_update( comment_data );
 
 				});
 
@@ -227,7 +234,7 @@ jQuery(document).ready( function($) {
 				item.attr( 'data-incom', identifier + ( number + 1 ) );
 
 				// add to array
-				social_paper_add_comment( {
+				social_paper_incom_tracker_add( {
 					is_new: true,
 					is_modified: false,
 					original: identifier + number,
@@ -250,7 +257,7 @@ jQuery(document).ready( function($) {
 
 				// get new node
 				node = SocialPaper.editor.selection.getNode();
-				console.log( 'node', node );
+				//console.log( 'node', node );
 
 			}
 
@@ -298,11 +305,11 @@ jQuery(document).ready( function($) {
 			// fade out bubbles
 			$('#incom_wrapper').fadeOut();
 
-			// build array
-			social_paper_init_comments();
+			// build tracker array
+			social_paper_incom_tracker_init();
 
-			// copy content
-			social_paper_copy_incom_content();
+			// set attributes in TinyMCE content
+			social_paper_incom_tinymce_build();
 
 		}
 
@@ -370,26 +377,11 @@ jQuery(document).ready( function($) {
 		// if Inline Comments present
 		if ( window.incom ) {
 
-			// clear Inline Comments attributes
-			social_paper_clear_incom_attributes();
+			// clear attributes
+			social_paper_incom_tinymce_clean();
 
-			SocialPaper.comments.forEach( function( item ) {
-
-				if ( item.is_modified && ! item.is_new ) {
-
-					$('li[data-incom-comment="' + item.original + '"]' ).each( function( i, el ) {
-						if ( ! $(el).hasClass( 'sp_processed' ) ) {
-							$(el).attr( 'data-incom-comment', item.modified );
-							$(el).addClass( 'sp_processed' );
-						}
-					});
-
-				}
-
-			});
-
-			// remove processed identifier
-			$('li.sp_processed').removeClass( 'sp_processed' );
+			// update data attributes for comments
+			social_paper_incom_comments_update();
 
 		}
 
